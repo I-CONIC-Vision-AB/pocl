@@ -535,8 +535,8 @@ void replaceVariable2(llvm::Module *Module, std::string variableName, bool arg_i
 void replaceVariable(llvm::Module *Module, std::string variableName, bool arg_is_64bit=false) {
 	printf("Running replaceVariable with variable %s\n",variableName.c_str());
 	auto variableNameWithUnderscore=std::string("_")+variableName;
-  auto WorkDimVar = Module->getGlobalVariable(variableNameWithUnderscore);
-  if (WorkDimVar == nullptr)
+  auto GlobalVar = Module->getGlobalVariable(variableNameWithUnderscore);
+  if (GlobalVar == nullptr)
     return;
 
   auto keys=getSymbolTableKeys(Module);
@@ -553,7 +553,7 @@ void replaceVariable(llvm::Module *Module, std::string variableName, bool arg_is
   	if(!pocl::isKernelToProcess(function)){
 		continue;
 	}
-	if(!pocl::isGVarUsedByFunction(WorkDimVar,&function)){
+	if(!pocl::isGVarUsedByFunction(GlobalVar,&function)){
 			continue;
 	}
 	printf("Pushed back function '%s' with address 0x%lx\n",function.getName().str().c_str(), (unsigned long)&function);
@@ -598,7 +598,7 @@ void replaceVariable(llvm::Module *Module, std::string variableName, bool arg_is
     NewArg->setName(variableName);
     num_updated_functions++;
     printf("Updated function '%s' with address 0x%lx\n", (*Function).getName().str().c_str(), (unsigned long)Function);
-    // replaceScalarGlobalVar(Module, "_work_dim", (&*NewArg++));
+    replaceScalarGlobalVar(Module, variableNameWithUnderscore, (&*NewArg++));
 
     // TODO: What if get_work_dim() is called from a non-kernel function?
   }
@@ -621,6 +621,7 @@ void handleGetWorkDim(llvm::Module* Module){
 void handleGetGlobalOffset(llvm::Module* Module){
 	replaceVariable(Module, "global_offset_x", true);
 	replaceVariable(Module, "global_offset_y", true);
+	replaceVariable(Module, "global_offset_z", true);
 }
 
 int findLibDevice(char LibDevicePath[PATH_MAX], const char *Arch) {
