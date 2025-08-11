@@ -30,7 +30,7 @@ get_global_offset(unsigned int dimindx)
 {
   switch(dimindx)
     {
-    case 0: return _global_offset_x;
+    case 0: return _global_offset_x+123;
     case 1: return _global_offset_y;
     case 2: return _global_offset_z;
     default: return 0;

@@ -1413,10 +1413,10 @@ pocl_cuda_submit_unmap_mem (CUstream stream, pocl_mem_identifier *dst_mem_id,
 // https://docs.nvidia.com/cuda/ptx-compiler-api/index.html#basic-usage
 
 /* build a program with builtin kernels. */
-
 static int
 pocl_cuda_build_cuda_builtins (cl_program program, cl_uint device_i)
 {
+  printf("Running pocl_cuda_build_cuda_builtins\n");
   POCL_MSG_PRINT_CUDA ("preparing CUDA builtin kernels\n");
   cl_device_id dev = program->devices[device_i];
   pocl_cuda_device_data_t *ddata = (pocl_cuda_device_data_t *)dev->data;
@@ -1437,6 +1437,7 @@ pocl_cuda_build_cuda_builtins (cl_program program, cl_uint device_i)
   filename[0] = '/';
   pocl_str_tolower (filename + 1, dev->ops->device_name);
   strcat (filename, "/");
+  printf("Have SM70? %d\n", have_sm70);
   if (have_sm70)
     strcat (filename, "builtins_sm70.ptx");
   else
@@ -1560,7 +1561,7 @@ pocl_cuda_build_ptx (void *llvm_ir, cl_program prog, char *out_ptx, CUmodule *ou
   assert (out_ptx);
   assert (out_module);
   CUresult result;
-
+  printf("Running pocl_cuda_build_ptx\n");
   /* Generate PTX from LLVM bitcode */
   if (!pocl_exists (out_ptx))
     {
@@ -1581,6 +1582,7 @@ pocl_cuda_build_ptx (void *llvm_ir, cl_program prog, char *out_ptx, CUmodule *ou
 #ifdef POCL_DEBUG_MESSAGES
   if (!(pocl_debug_messages_filter & POCL_DEBUG_FLAG_CUDA))
     {
+      printf("pocl_cuda_build_ptx: running cuModuleLoad\n");
       result = cuModuleLoad (out_module, out_ptx);
       POCL_RETURN_ERROR_ON ((result != CUDA_SUCCESS), CL_BUILD_PROGRAM_FAILURE,
                             "cuModuleLoad PTX failed\n");
@@ -1599,6 +1601,7 @@ pocl_cuda_build_ptx (void *llvm_ir, cl_program prog, char *out_ptx, CUmodule *ou
       POCL_RETURN_ERROR_ON ((content_size == 0), CL_BUILD_PROGRAM_FAILURE,
                             "failed to read PTX file: %s\n", out_ptx);
       void *val[] = { log, (void *)log_size };
+      printf("pocl_cuda_build_ptx: running cuModuleLoadDataEx\n");
       result = cuModuleLoadDataEx (out_module, content,
                                    sizeof (opt) / sizeof (opt[0]), opt, val);
 
@@ -2154,6 +2157,38 @@ pocl_cuda_submit_kernel (CUstream stream, _cl_command_node *cmd,
       params[arg_index++] = globalOffsets + 2;
     }
 
+  //struct pocl_cuda_kernel_data {
+   // CUmodule module;
+   // CUfunction function;
+  //};
+
+  //struct pocl_cuda_kernel_data *cuda_data =
+  //  (struct pocl_cuda_kernel_data*) kernel->data;
+
+  //CUmodule module = cuda_data->module;
+
+  CUdeviceptr dptr;
+  size_t bytes;
+
+  CUresult res;
+  unsigned int gx_host = (unsigned int)pc.global_offset[0];
+  unsigned int gx_host_original;
+  printf("pocl-cuda.c::pocl_cuda_submit_kernel: setting _global_offset_x with value %d\n", gx_host);
+  res = cuModuleGetGlobal(&dptr, &bytes, module, "_global_offset_x");
+  cuMemcpyDtoH(&gx_host_original, dptr, sizeof(gx_host_original));
+  printf("pocl-cuda.c: retrieved original from device: %d, return code %d\n", gx_host_original, res);
+  if (res == CUDA_SUCCESS && bytes == sizeof(unsigned)){
+    res = cuMemcpyHtoD(dptr, &gx_host, sizeof(gx_host));
+    printf("pocl-cuda.c: Wrote to device with return code %d, dptr=%x. Size of variable is %d bytes\n", res, dptr, (int)bytes);
+  }else{
+	  printf("Failed copying _global_offset_x to device. dptr = %x, res = %d\n", dptr, res);
+  }
+
+  unsigned int gx_host_test=123;
+  res = cuMemcpyDtoH(&gx_host_test, dptr, sizeof(gx_host_test));
+  printf("pocl-cuda.c: retrieved from device: %d, return code %d\n", gx_host_test, res);
+
+  printf("pocl-cuda.c::pocl_cuda_submit_kernel: global offsets are (%d, %d, %d)\n", globalOffsets[0], globalOffsets[1], globalOffsets[2]);
   /* Launch kernel */
   result = cuLaunchKernel (function, pc.num_groups[0], pc.num_groups[1],
                            pc.num_groups[2], pc.local_size[0],

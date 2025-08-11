@@ -33,12 +33,14 @@
 #include "pocl_runtime_config.h"
 
 #include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/ValueSymbolTable.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/TargetRegistry.h"
@@ -56,6 +58,7 @@
 
 #include <set>
 #include <optional>
+#include <vector>
 
 namespace llvm {
 extern ModulePass *createNVVMReflectPass(const StringMap<int> &Mapping);
@@ -68,6 +71,7 @@ static void fixConstantMemArgs(llvm::Module *Module);
 static void fixLocalMemArgs(llvm::Module *Module);
 static void fixPrintF(llvm::Module *Module);
 static void handleGetWorkDim(llvm::Module *Module);
+static void handleGetGlobalOffset(llvm::Module *Module);
 static int linkLibDevice(llvm::Module *Module, const char *LibDevicePath);
 static void mapLibDeviceCalls(llvm::Module *Module);
 static void createAlignmentMap(llvm::Module *Module,
@@ -130,6 +134,10 @@ int pocl_ptx_gen(void *Device, void *Program, void *llvm_module, const char *PTX
   if (VerifyMod && !verifyModule(Module, "handleGetWorkDim"))
     return CL_BUILD_PROGRAM_FAILURE;
 
+  handleGetGlobalOffset(Module);
+  if (VerifyMod && !verifyModule(Module, "handleGetGlobalOffset"))
+    return CL_BUILD_PROGRAM_FAILURE;
+  
   addKernelAnnotations(Module);
   if (VerifyMod && !verifyModule(Module, "addAnnotations"))
     return CL_BUILD_PROGRAM_FAILURE;
@@ -426,8 +434,40 @@ static void replaceScalarGlobalVar(llvm::Module *Module, const char *Name,
 }
 #endif
 
-// Add an extra kernel argument for the dimensionality.
-void handleGetWorkDim(llvm::Module *Module) {
+std::vector<std::string> getSymbolTableKeys(llvm::Module* module){
+	std::vector<std::string> keys={};
+	auto& symbolTable = module->getValueSymbolTable();
+	for(auto& curSymbol : symbolTable){
+	auto key = std::string(curSymbol.getKeyData());
+	keys.push_back(key);
+	}
+	return keys;
+}
+
+std::string getFunctionName(llvm::Function* fn){
+llvm::StringRef nameRefMangled = fn->getName();
+std::string nameMangled = nameRefMangled.str();
+printf("Mangled name: %s\n", nameMangled.c_str());
+auto demangler=llvm::ItaniumPartialDemangler();
+char result[256];
+auto nameDemangled=std::string();
+if(demangler.partialDemangle(nameMangled.c_str())){
+	printf("Failed to demangle name\n");
+}else{
+	size_t buf_size=256;
+	demangler.getFunctionName(result, &buf_size);
+	printf("Buffer size: %d\n", (int)buf_size);
+	if(result){
+		nameDemangled=std::string(result);
+	}else{
+		printf("Could not extract function name\n");
+
+	}
+}
+return nameDemangled;
+}
+
+void replaceVariable2(llvm::Module *Module, std::string variableName, bool arg_is_64bit=false) {
 
   llvm::SmallVector<llvm::Function *, 8> FunctionsToErase;
 
@@ -435,7 +475,12 @@ void handleGetWorkDim(llvm::Module *Module) {
   if (WorkDimVar == nullptr)
     return;
 
-  for (auto &FI : Module->functions()) {
+
+  auto el_begin = Module->functions().begin();
+  auto el_end = Module->functions().end();
+	printf("Hello..\n");
+  for (auto el_cur=el_begin;el_cur!=el_end;el_cur++) {
+    llvm::Function& FI = *el_cur;
     if (!pocl::isKernelToProcess(FI))
       continue;
 
@@ -447,8 +492,11 @@ void handleGetWorkDim(llvm::Module *Module) {
     llvm::FunctionType *FunctionType = Function->getFunctionType();
     std::vector<llvm::Type *> ArgumentTypes(FunctionType->param_begin(),
                                             FunctionType->param_end());
-    ArgumentTypes.push_back(llvm::Type::getInt32Ty(Module->getContext()));
-
+    if(arg_is_64bit){
+    	ArgumentTypes.push_back(llvm::Type::getInt64Ty(Module->getContext()));
+    }else{
+    	ArgumentTypes.push_back(llvm::Type::getInt32Ty(Module->getContext()));
+    }
     // Create new function.
     llvm::FunctionType *NewFunctionType = llvm::FunctionType::get(
         Function->getReturnType(), ArgumentTypes, false);
@@ -481,6 +529,98 @@ void handleGetWorkDim(llvm::Module *Module) {
   for (auto F : FunctionsToErase) {
     F->eraseFromParent();
   }
+}
+
+// Add an extra kernel argument for the dimensionality.
+void replaceVariable(llvm::Module *Module, std::string variableName, bool arg_is_64bit=false) {
+	printf("Running replaceVariable with variable %s\n",variableName.c_str());
+	auto variableNameWithUnderscore=std::string("_")+variableName;
+  auto WorkDimVar = Module->getGlobalVariable(variableNameWithUnderscore);
+  if (WorkDimVar == nullptr)
+    return;
+
+  auto keys=getSymbolTableKeys(Module);
+
+ 
+  //for(auto& key : keys){
+ // 	printf("Key: %s\n", key.c_str());
+  //}
+  llvm::SmallVector<llvm::Function*, 8> functionsToUpdate={};
+
+
+  for(auto& function : Module->functions()){
+	//printf("Checking function '%s'..\n", function.getName().str().c_str());
+  	if(!pocl::isKernelToProcess(function)){
+		continue;
+	}
+	if(!pocl::isGVarUsedByFunction(WorkDimVar,&function)){
+			continue;
+	}
+	printf("Pushed back function '%s' with address 0x%lx\n",function.getName().str().c_str(), (unsigned long)&function);
+	functionsToUpdate.push_back(&function);
+	//printf("Name after push: %s\n", functionsToUpdate.back()->getName().str().c_str());
+  }
+
+	auto num_updated_functions=int();
+
+  for (auto Function : functionsToUpdate) {
+    // Add additional argument for the work item dimensionality.
+    llvm::FunctionType *FunctionType = Function->getFunctionType();
+    std::vector<llvm::Type *> ArgumentTypes(FunctionType->param_begin(),
+                                            FunctionType->param_end());
+    if(arg_is_64bit){
+    	ArgumentTypes.push_back(llvm::Type::getInt64Ty(Module->getContext()));
+    }else{
+    	ArgumentTypes.push_back(llvm::Type::getInt32Ty(Module->getContext()));
+    }
+    // Create new function.
+    llvm::FunctionType *NewFunctionType = llvm::FunctionType::get(
+        Function->getReturnType(), ArgumentTypes, false);
+    llvm::Function *NewFunction = llvm::Function::Create(
+        NewFunctionType, Function->getLinkage(), Function->getName(), Module);
+    NewFunction->takeName(Function);
+
+    // Map function arguments.
+    llvm::ValueToValueMapTy VV;
+    llvm::Function::arg_iterator OldArg;
+    llvm::Function::arg_iterator NewArg;
+    for (OldArg = Function->arg_begin(), NewArg = NewFunction->arg_begin();
+         OldArg != Function->arg_end(); NewArg++, OldArg++) {
+      NewArg->takeName(&*OldArg);
+      VV[&*OldArg] = &*NewArg;
+    }
+
+    // Clone function.
+    llvm::SmallVector<llvm::ReturnInst *, 1> RI;
+    CloneFunctionIntoAbs(NewFunction, Function, VV, RI);
+
+    // Replace uses of the global offset variables with the new arguments.
+    NewArg->setName(variableName);
+    num_updated_functions++;
+    printf("Updated function '%s' with address 0x%lx\n", (*Function).getName().str().c_str(), (unsigned long)Function);
+    // replaceScalarGlobalVar(Module, "_work_dim", (&*NewArg++));
+
+    // TODO: What if get_work_dim() is called from a non-kernel function?
+  }
+  printf("Updated a total of %d functions\n", num_updated_functions);
+  
+  for (auto F : functionsToUpdate) {
+    F->eraseFromParent();
+  }
+
+  //printf("Printing all function names..\n");
+  //  for(auto& function : Module->functions()){
+  //        printf("Function name: '%s'\n", function.getName().str().c_str());
+  //}
+}
+
+void handleGetWorkDim(llvm::Module* Module){
+	replaceVariable(Module, "work_dim");
+}
+
+void handleGetGlobalOffset(llvm::Module* Module){
+	replaceVariable(Module, "global_offset_x", true);
+	replaceVariable(Module, "global_offset_y", true);
 }
 
 int findLibDevice(char LibDevicePath[PATH_MAX], const char *Arch) {
