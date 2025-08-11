@@ -596,7 +596,7 @@ void replaceVariable(llvm::Module *Module, std::string variableName, bool arg_is
     NewArg->setName(variableName);
     num_updated_functions++;
     printf("Updated function '%s' with address 0x%lx\n", (*Function).getName().str().c_str(), (unsigned long)Function);
-    replaceScalarGlobalVar(Module, variableNameWithUnderscore, (&*NewArg++));
+    replaceScalarGlobalVar(Module, variableNameWithUnderscore.c_str(), (&*NewArg++));
 
     // TODO: What if get_work_dim() is called from a non-kernel function?
   }
