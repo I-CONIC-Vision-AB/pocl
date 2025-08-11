@@ -617,9 +617,9 @@ void handleGetWorkDim(llvm::Module* Module){
 }
 
 void handleGetGlobalOffset(llvm::Module* Module){
-	replaceVariable(Module, "global_offset_x", true);
-	replaceVariable(Module, "global_offset_y", true);
-	replaceVariable(Module, "global_offset_z", true);
+	replaceVariable(Module, "global_offset_x", false);
+	replaceVariable(Module, "global_offset_y", false);
+	replaceVariable(Module, "global_offset_z", false);
 }
 
 int findLibDevice(char LibDevicePath[PATH_MAX], const char *Arch) {
