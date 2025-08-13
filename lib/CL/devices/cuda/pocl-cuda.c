@@ -2157,38 +2157,6 @@ pocl_cuda_submit_kernel (CUstream stream, _cl_command_node *cmd,
       params[arg_index++] = globalOffsets + 2;
     }
 
-  //struct pocl_cuda_kernel_data {
-   // CUmodule module;
-   // CUfunction function;
-  //};
-
-  //struct pocl_cuda_kernel_data *cuda_data =
-  //  (struct pocl_cuda_kernel_data*) kernel->data;
-
-  //CUmodule module = cuda_data->module;
-
-  CUdeviceptr dptr;
-  size_t bytes;
-
-  CUresult res;
-  unsigned int gx_host = (unsigned int)pc.global_offset[0];
-  unsigned int gx_host_original;
-  printf("pocl-cuda.c::pocl_cuda_submit_kernel: setting _global_offset_x with value %d\n", gx_host);
-  res = cuModuleGetGlobal(&dptr, &bytes, module, "_global_offset_x");
-  cuMemcpyDtoH(&gx_host_original, dptr, sizeof(gx_host_original));
-  printf("pocl-cuda.c: retrieved original from device: %d, return code %d\n", gx_host_original, res);
-  if (res == CUDA_SUCCESS && bytes == sizeof(unsigned)){
-    res = cuMemcpyHtoD(dptr, &gx_host, sizeof(gx_host));
-    printf("pocl-cuda.c: Wrote to device with return code %d, dptr=%x. Size of variable is %d bytes\n", res, dptr, (int)bytes);
-  }else{
-	  printf("Failed copying _global_offset_x to device. dptr = %x, res = %d\n", dptr, res);
-  }
-
-  unsigned int gx_host_test=123;
-  res = cuMemcpyDtoH(&gx_host_test, dptr, sizeof(gx_host_test));
-  printf("pocl-cuda.c: retrieved from device: %d, return code %d\n", gx_host_test, res);
-
-  printf("pocl-cuda.c::pocl_cuda_submit_kernel: global offsets are (%d, %d, %d)\n", globalOffsets[0], globalOffsets[1], globalOffsets[2]);
   /* Launch kernel */
   result = cuLaunchKernel (function, pc.num_groups[0], pc.num_groups[1],
                            pc.num_groups[2], pc.local_size[0],
