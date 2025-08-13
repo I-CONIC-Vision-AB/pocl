@@ -1,0 +1,103 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 23,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "paths",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/out/build/${presetName}"
+    },
+    {
+      "name": "debug",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": {
+          "type": "STRING",
+          "value": "Debug"
+        }
+      }
+    },
+    {
+      "name": "release",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": {
+          "type": "STRING",
+          "value": "Release"
+        }
+      }
+    },
+    {
+      "name": "windows-base",
+      "inherits": [
+        "paths"
+      ],
+      "hidden": true,
+      "generator": "Ninja",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "linux-base",
+      "inherits": [
+        "paths"
+      ],
+      "hidden": true,
+      "generator": "Ninja",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "ENABLE_CUDA": true
+      }
+    },
+    {
+      "name": "x64-windows-debug",
+      "displayName": "Windows Debug (x64)",
+      "description": "Use this for debug configurations on Windows 64-bit",
+      "inherits": [
+        "windows-base",
+        "debug"
+      ]
+    },
+    {
+      "name": "x64-windows-release",
+      "displayName": "Windows Release (x64)",
+      "description": "Use this for release configurations on Windows 64-bit",
+      "inherits": [
+        "windows-base",
+        "release"
+      ]
+    },
+    {
+      "name": "x64-linux-debug",
+      "displayName": "Linux Debug (x64)",
+      "description": "Use this for debug configurations on Linux 64-bit",
+      "inherits": [
+        "linux-base",
+        "debug"
+      ]
+    },
+    {
+      "name": "x64-linux-release",
+      "displayName": "Linux Release (x64)",
+      "description": "Use this for release configurations on Linux 64-bit",
+      "inherits": [
+        "linux-base",
+        "release"
+      ]
+    }
+  ],
+  "buildPresets": [],
+  "testPresets": [],
+  "vendor": {}
+}
