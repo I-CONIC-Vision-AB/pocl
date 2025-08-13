@@ -98,6 +98,9 @@ bool isWorkitemFunctionWithOnlyCompilerExpandableCalls(const llvm::Function &F);
 bool isCompilerExpandableWIFunctionCall(const llvm::CallInst &Call);
 
 POCL_EXPORT
+bool isGVarUsedByFunctionAfterInline(llvm::GlobalVariable* GVar, llvm::Function* F);
+
+POCL_EXPORT
 bool isGVarUsedByFunction(llvm::GlobalVariable *GVar, llvm::Function *F);
 
 // Checks if the given argument of Func is a local buffer.
