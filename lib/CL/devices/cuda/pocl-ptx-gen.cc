@@ -449,7 +449,6 @@ static void replaceScalarGlobalVarInFunction(llvm::Module* Module, llvm::Functio
             Load->eraseFromParent();
         }
     }
-    GlobalVar->eraseFromParent();
 }
 
 std::vector<std::string> getSymbolTableKeys(llvm::Module* module){
@@ -462,31 +461,7 @@ std::vector<std::string> getSymbolTableKeys(llvm::Module* module){
   return keys;
 }
 
-std::string getFunctionName(llvm::Function* fn){
-  llvm::StringRef nameRefMangled = fn->getName();
-  std::string nameMangled = nameRefMangled.str();
-  printf("Mangled name: %s\n", nameMangled.c_str());
-  auto demangler=llvm::ItaniumPartialDemangler();
-  char result[256];
-  auto nameDemangled=std::string();
-  if (demangler.partialDemangle(nameMangled.c_str())){
-  	printf("Failed to demangle name\n");
-  } else {
-    size_t buf_size=256;
-    demangler.getFunctionName(result, &buf_size);
-    printf("Buffer size: %d\n", (int)buf_size);
-    if (result) {
-    	nameDemangled=std::string(result);
-    } else {
-    	printf("Could not extract function name\n");
-    }
-  }
-  return nameDemangled;
-}
-
 void replaceGlobalVariableWithArg(llvm::Module *Module, std::string variableName, llvm::Type* type) {
-  printf("Running replaceVariable with variable %s\n",variableName.c_str());
-
   llvm::SmallVector<llvm::Function*, 8> functionsToUpdate={};
   for(auto& function : Module->functions()){
   	if(!pocl::isKernelToProcess(function)){
@@ -498,8 +473,6 @@ void replaceGlobalVariableWithArg(llvm::Module *Module, std::string variableName
   auto num_updated_functions=int();
 
   for (auto Function : functionsToUpdate) {
-	printf("Updating function: %s\n", Function->getName().str().c_str());
-
     // Add additional argument for the work item dimensionality.
     llvm::FunctionType *FunctionType = Function->getFunctionType();
     std::vector<llvm::Type *> ArgumentTypes(FunctionType->param_begin(),
@@ -529,55 +502,27 @@ void replaceGlobalVariableWithArg(llvm::Module *Module, std::string variableName
 
     // Replace uses of the global offset variables with the new arguments.
     NewArg->setName(variableName);
-    replaceScalarGlobalVarInFunction(Module, NewFunction, ("_" + variableName).c_str(), (&*NewArg++));
+    replaceScalarGlobalVarInFunction(Module, NewFunction, ("_" + variableName).c_str(), (&*NewArg));
     num_updated_functions++;
     // TODO: What if get_work_dim() is called from a non-kernel function?
   }
-  printf("Updated a total of %d functions\n", num_updated_functions);
   
   for (auto F : functionsToUpdate) {
     F->eraseFromParent();
   }
-
-  //printf("Printing all function names..\n");
-  //  for(auto& function : Module->functions()){
-  //        printf("Function name: '%s'\n", function.getName().str().c_str());
-  //}
+  auto GlobalVar = Module->getGlobalVariable(variableName);
+  if (GlobalVar) {
+      GlobalVar->eraseFromParent();
+  }
 }
 
 // Types must be specified in this version since the global variable may not exist and type can't be inferred
 void replaceGlobalVariablesWithArgs(llvm::Module* Module, std::vector<std::string> variableNames, std::vector<llvm::Type*> types) {
-    printf("Running replaceVariable with %d variables %s, ...\n", variableNames.size(), variableNames[0].c_str());
-    
-    bool anyGVarExist = false;
-    for (std::string variableName : variableNames) {
-        auto GlobalVar = Module->getGlobalVariable("_" + variableName);
-        if (GlobalVar) {
-            anyGVarExist = true;
-            break;
-        }
-    }
-    if (!anyGVarExist)
-        return;
-
-    auto keys = getSymbolTableKeys(Module);
+    assert(variableNames.size() == types.size());
 
     llvm::SmallVector<llvm::Function*, 8> functionsToUpdate = {};
     for (auto& function : Module->functions()) {
-        //printf("Checking function '%s'..\n", function.getName().str().c_str());
         if (!pocl::isKernelToProcess(function)) {
-            continue;
-        }
-        bool anyGVarUsed = false;
-        for (std::string variableName : variableNames) {
-            auto GlobalVar = Module->getGlobalVariable("_" + variableName);
-            if (!GlobalVar) continue;
-            if (pocl::isGVarUsedByFunctionAfterInline(GlobalVar, &function)) {
-                anyGVarUsed = true;
-                break;
-            }
-        }
-        if (!anyGVarUsed) {
             continue;
         }
         functionsToUpdate.push_back(&function);
@@ -586,8 +531,6 @@ void replaceGlobalVariablesWithArgs(llvm::Module* Module, std::vector<std::strin
     auto num_updated_functions = int();
 
     for (auto Function : functionsToUpdate) {
-        printf("Updating function: %s\n", Function->getName().str().c_str());
-
         // Add additional argument for the work item dimensionality.
         llvm::FunctionType* FunctionType = Function->getFunctionType();
         std::vector<llvm::Type*> ArgumentTypes(FunctionType->param_begin(),
@@ -618,32 +561,34 @@ void replaceGlobalVariablesWithArgs(llvm::Module* Module, std::vector<std::strin
         // Replace uses of the global offset variables with the new arguments.
         for (std::string variableName : variableNames) {
             NewArg->setName(variableName);
-            replaceScalarGlobalVarInFunction(Module, NewFunction, ("_" + variableName).c_str(), (&*NewArg++));
+            replaceScalarGlobalVarInFunction(Module, NewFunction, ("_" + variableName).c_str(), (&*NewArg));
+            NewArg++;
         }
         num_updated_functions++;
     }
-    printf("Updated a total of %d functions\n", num_updated_functions);
 
     for (auto F : functionsToUpdate) {
         F->eraseFromParent();
     }
 
-    //printf("Printing all function names..\n");
-    //  for(auto& function : Module->functions()){
-    //        printf("Function name: '%s'\n", function.getName().str().c_str());
-    //}
+    for (std::string variableName : variableNames) {
+        auto GlobalVar = Module->getGlobalVariable(variableName);
+        if (GlobalVar) {
+            GlobalVar->eraseFromParent();
+        }
+    }
 }
 
 void handleGetWorkDim(llvm::Module* Module){
-    auto type = llvm::Type::getInt32Ty(Module->getContext());
-	replaceGlobalVariableWithArg(Module, "work_dim", type);
+ //   auto type = llvm::Type::getInt32Ty(Module->getContext());
+	//replaceGlobalVariableWithArg(Module, "global_offset_x", type);
 }
 
 void handleGetGlobalOffset(llvm::Module* Module){
     auto type = llvm::Type::getInt32Ty(Module->getContext());
 	replaceGlobalVariablesWithArgs(Module, 
-        std::vector<std::string>{ "global_offset_x", "global_offset_y", "global_offset_z" }, 
-        std::vector<llvm::Type*>(3, type));
+        std::vector<std::string>{ "work_dim", "global_offset_x", "global_offset_y", "global_offset_z" },
+        std::vector<llvm::Type*>(4, type));
 }
 
 int findLibDevice(char LibDevicePath[PATH_MAX], const char *Arch) {
