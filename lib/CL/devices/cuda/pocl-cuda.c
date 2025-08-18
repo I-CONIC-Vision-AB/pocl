@@ -2147,15 +2147,12 @@ pocl_cuda_submit_kernel (CUstream stream, _cl_command_node *cmd,
   params[arg_index++] = &pc.work_dim;
 
   /* Add global offsets if necessary */
-  if (has_offsets)
-    {
-      globalOffsets[0] = pc.global_offset[0];
-      globalOffsets[1] = pc.global_offset[1];
-      globalOffsets[2] = pc.global_offset[2];
-      params[arg_index++] = globalOffsets + 0;
-      params[arg_index++] = globalOffsets + 1;
-      params[arg_index++] = globalOffsets + 2;
-    }
+  globalOffsets[0] = pc.global_offset[0];
+  globalOffsets[1] = pc.global_offset[1];
+  globalOffsets[2] = pc.global_offset[2];
+  params[arg_index++] = globalOffsets + 0;
+  params[arg_index++] = globalOffsets + 1;
+  params[arg_index++] = globalOffsets + 2;
 
   /* Launch kernel */
   result = cuLaunchKernel (function, pc.num_groups[0], pc.num_groups[1],
