@@ -1416,7 +1416,6 @@ pocl_cuda_submit_unmap_mem (CUstream stream, pocl_mem_identifier *dst_mem_id,
 static int
 pocl_cuda_build_cuda_builtins (cl_program program, cl_uint device_i)
 {
-  printf("Running pocl_cuda_build_cuda_builtins\n");
   POCL_MSG_PRINT_CUDA ("preparing CUDA builtin kernels\n");
   cl_device_id dev = program->devices[device_i];
   pocl_cuda_device_data_t *ddata = (pocl_cuda_device_data_t *)dev->data;
@@ -1437,7 +1436,6 @@ pocl_cuda_build_cuda_builtins (cl_program program, cl_uint device_i)
   filename[0] = '/';
   pocl_str_tolower (filename + 1, dev->ops->device_name);
   strcat (filename, "/");
-  printf("Have SM70? %d\n", have_sm70);
   if (have_sm70)
     strcat (filename, "builtins_sm70.ptx");
   else
@@ -1561,7 +1559,6 @@ pocl_cuda_build_ptx (void *llvm_ir, cl_program prog, char *out_ptx, CUmodule *ou
   assert (out_ptx);
   assert (out_module);
   CUresult result;
-  printf("Running pocl_cuda_build_ptx\n");
   /* Generate PTX from LLVM bitcode */
   if (!pocl_exists (out_ptx))
     {
@@ -1582,7 +1579,6 @@ pocl_cuda_build_ptx (void *llvm_ir, cl_program prog, char *out_ptx, CUmodule *ou
 #ifdef POCL_DEBUG_MESSAGES
   if (!(pocl_debug_messages_filter & POCL_DEBUG_FLAG_CUDA))
     {
-      printf("pocl_cuda_build_ptx: running cuModuleLoad\n");
       result = cuModuleLoad (out_module, out_ptx);
       POCL_RETURN_ERROR_ON ((result != CUDA_SUCCESS), CL_BUILD_PROGRAM_FAILURE,
                             "cuModuleLoad PTX failed\n");
@@ -1601,7 +1597,6 @@ pocl_cuda_build_ptx (void *llvm_ir, cl_program prog, char *out_ptx, CUmodule *ou
       POCL_RETURN_ERROR_ON ((content_size == 0), CL_BUILD_PROGRAM_FAILURE,
                             "failed to read PTX file: %s\n", out_ptx);
       void *val[] = { log, (void *)log_size };
-      printf("pocl_cuda_build_ptx: running cuModuleLoadDataEx\n");
       result = cuModuleLoadDataEx (out_module, content,
                                    sizeof (opt) / sizeof (opt[0]), opt, val);
 
