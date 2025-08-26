@@ -1614,11 +1614,6 @@ pocl_cuda_build_ptx (void *llvm_ir, cl_program prog, char *out_ptx, CUmodule *ou
     }
 #endif
 
-  /* Get handle to constant memory buffer */
-  // this call might fail actually
-  cuModuleGetGlobal (constant_mem_base, constant_mem_size, *out_module,
-                     "_constant_memory_region_");
-
   return CL_SUCCESS;
 }
 
