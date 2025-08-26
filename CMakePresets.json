@@ -9,7 +9,10 @@
     {
       "name": "paths",
       "hidden": true,
-      "binaryDir": "${sourceDir}/out/build/${presetName}"
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "ENABLE_CUDA": true
+      }
     },
     {
       "name": "debug",
@@ -38,6 +41,15 @@
       ],
       "hidden": true,
       "generator": "Ninja",
+      "cacheVariables": {
+        "ENABLE_ICD": "0",
+        "ENABLE_LLVM": "1",
+        "ENABLE_LOADABLE_DRIVERS": "0",
+        "STATIC_LLVM": "ON",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL",
+        "LLVM_LINK_TEST": true,
+        "CLANG_LINK_TEST": true
+      },
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -55,9 +67,6 @@
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
-      },
-      "cacheVariables": {
-        "ENABLE_CUDA": true
       }
     },
     {

@@ -75,8 +75,6 @@ static void createAlignmentMap(llvm::Module *Module,
                                AlignmentMapT *AlignmentMap);
 
 namespace pocl {
-extern bool isGVarUsedByFunction(llvm::GlobalVariable *GVar, llvm::Function *F);
-extern bool isGVarUsedByFunctionAfterInline(llvm::GlobalVariable *GVar, llvm::Function *F);
 extern llvm::ModulePass *
 createAutomaticLocalsPass(pocl_autolocals_to_args_strategy autolocals_to_args);
 extern bool isKernelToProcess(const llvm::Function &F);

@@ -249,18 +249,6 @@ recursivelyFindCalledFunctions(llvm::SmallSet<llvm::Function *, 12> &FSet,
   }
 }
 
-bool isGVarUsedByFunctionAfterInline(llvm::GlobalVariable* GVar, llvm::Function* F) {
-    std::vector<Use*> Uses = findInstructionUses(GVar);
-    for (auto& U : Uses) {
-        if (Instruction* I = dyn_cast<Instruction>(U->getUser()))
-        {
-            if (I->getFunction() == F)
-                return true;
-        }
-    }
-    return false;
-}
-
 bool isGVarUsedByFunction(llvm::GlobalVariable *GVar, llvm::Function *F) {
   std::vector<Use *> Uses = findInstructionUses(GVar);
   // we must recursively search for each function called by F, because
