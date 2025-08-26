@@ -33,14 +33,12 @@
 #include "pocl_runtime_config.h"
 
 #include "llvm/Bitcode/BitcodeReader.h"
-#include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/ValueSymbolTable.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/TargetRegistry.h"
@@ -58,7 +56,6 @@
 
 #include <set>
 #include <optional>
-#include <vector>
 
 namespace llvm {
 extern ModulePass *createNVVMReflectPass(const StringMap<int> &Mapping);
@@ -414,75 +411,47 @@ void fixPrintF(llvm::Module *Module) {
   VPrintF->eraseFromParent();
 }
 
-// Replace all load users of a scalar global variable with new value.
-static void replaceScalarGlobalVar(llvm::Module *Module, const char *Name,
-                                   llvm::Value *NewValue) {
+// Since all helper function are inlined, global variables only need to be replaced by arguments in current function
+static void replaceScalarGlobalVarInFunction(llvm::Module* Module, llvm::Function* Function, const char* Name,
+  llvm::Value* NewValue) {
   auto GlobalVar = Module->getGlobalVariable(Name);
   if (!GlobalVar)
     return;
-
-  std::vector<llvm::Value *> Users(GlobalVar->user_begin(),
-                                   GlobalVar->user_end());
-  for (auto *U : Users) {
+  
+  std::vector<llvm::Value*> Users(GlobalVar->user_begin(),
+                                  GlobalVar->user_end());
+  for (auto* U : Users) {
     auto Load = llvm::dyn_cast<llvm::LoadInst>(U);
     assert(Load && "Use of a scalar global variable is not a load");
-    Load->replaceAllUsesWith(NewValue);
-    Load->eraseFromParent();
-  }
-  GlobalVar->eraseFromParent();
-}
-
-// Since all helper function are inlined, global variables only need to be replaced by arguments in current function
-static void replaceScalarGlobalVarInFunction(llvm::Module* Module, llvm::Function* Function, const char* Name,
-    llvm::Value* NewValue) {
-    auto GlobalVar = Module->getGlobalVariable(Name);
-    if (!GlobalVar)
-        return;
-
-    std::vector<llvm::Value*> Users(GlobalVar->user_begin(),
-        GlobalVar->user_end());
-    for (auto* U : Users) {
-        auto Load = llvm::dyn_cast<llvm::LoadInst>(U);
-        assert(Load && "Use of a scalar global variable is not a load");
-        if (Load->getFunction() == Function) {
-            Load->replaceAllUsesWith(NewValue);
-            Load->eraseFromParent();
-        }
+    if (Load->getFunction() == Function) {
+      Load->replaceAllUsesWith(NewValue);
+      Load->eraseFromParent();
     }
+  }
 }
 
-std::vector<std::string> getSymbolTableKeys(llvm::Module* module){
-  std::vector<std::string> keys={};
-  auto& symbolTable = module->getValueSymbolTable();
-  for(auto& curSymbol : symbolTable){
-  auto key = std::string(curSymbol.getKeyData());
-  keys.push_back(key);
-  }
-  return keys;
-}
+void replaceGlobalVariablesWithArgs(llvm::Module* Module, std::vector<std::string> variableNames, std::vector<llvm::Type*> types) {
+  assert(variableNames.size() == types.size());
 
-void replaceGlobalVariableWithArg(llvm::Module *Module, std::string variableName, llvm::Type* type) {
-  llvm::SmallVector<llvm::Function*, 8> functionsToUpdate={};
-  for(auto& function : Module->functions()){
-  	if(!pocl::isKernelToProcess(function)){
-		continue;
-	}
-	functionsToUpdate.push_back(&function);
+  llvm::SmallVector<llvm::Function*, 8> FunctionsToUpdate;
+  for (auto& function : Module->functions()) {
+      if (!pocl::isKernelToProcess(function)) {
+          continue;
+      }
+      FunctionsToUpdate.push_back(&function);
   }
 
-  auto num_updated_functions=int();
-
-  for (auto Function : functionsToUpdate) {
-    // Add additional argument for the work item dimensionality.
-    llvm::FunctionType *FunctionType = Function->getFunctionType();
-    std::vector<llvm::Type *> ArgumentTypes(FunctionType->param_begin(),
-                                            FunctionType->param_end());
-    ArgumentTypes.push_back(type);
+  for (auto Function : FunctionsToUpdate) {
+    // Add additional arguments.
+    llvm::FunctionType* FunctionType = Function->getFunctionType();
+    std::vector<llvm::Type*> ArgumentTypes(FunctionType->param_begin(),
+        FunctionType->param_end());
+    for (llvm::Type* type : types) ArgumentTypes.push_back(type);
 
     // Create new function.
-    llvm::FunctionType *NewFunctionType = llvm::FunctionType::get(
+    llvm::FunctionType* NewFunctionType = llvm::FunctionType::get(
         Function->getReturnType(), ArgumentTypes, false);
-    llvm::Function *NewFunction = llvm::Function::Create(
+    llvm::Function* NewFunction = llvm::Function::Create(
         NewFunctionType, Function->getLinkage(), Function->getName(), Module);
     NewFunction->takeName(Function);
 
@@ -491,104 +460,45 @@ void replaceGlobalVariableWithArg(llvm::Module *Module, std::string variableName
     llvm::Function::arg_iterator OldArg;
     llvm::Function::arg_iterator NewArg;
     for (OldArg = Function->arg_begin(), NewArg = NewFunction->arg_begin();
-         OldArg != Function->arg_end(); NewArg++, OldArg++) {
-      NewArg->takeName(&*OldArg);
-      VV[&*OldArg] = &*NewArg;
+        OldArg != Function->arg_end(); NewArg++, OldArg++) {
+        NewArg->takeName(&*OldArg);
+        VV[&*OldArg] = &*NewArg;
     }
 
     // Clone function.
-    llvm::SmallVector<llvm::ReturnInst *, 1> RI;
+    llvm::SmallVector<llvm::ReturnInst*, 1> RI;
     CloneFunctionIntoAbs(NewFunction, Function, VV, RI);
 
-    // Replace uses of the global offset variables with the new arguments.
-    NewArg->setName(variableName);
-    replaceScalarGlobalVarInFunction(Module, NewFunction, ("_" + variableName).c_str(), (&*NewArg));
-    num_updated_functions++;
-    // TODO: What if get_work_dim() is called from a non-kernel function?
+    // Replace uses of the global variable (if they exist) with the new arguments.
+    for (std::string variableName : variableNames) {
+        NewArg->setName(variableName);
+        replaceScalarGlobalVarInFunction(Module, NewFunction, ("_" + variableName).c_str(), (&*NewArg));
+        NewArg++;
+    }
   }
-  
-  for (auto F : functionsToUpdate) {
+
+  for (auto F : FunctionsToUpdate) {
     F->eraseFromParent();
   }
-  auto GlobalVar = Module->getGlobalVariable(variableName);
-  if (GlobalVar) {
+
+  for (std::string variableName : variableNames) {
+    auto GlobalVar = Module->getGlobalVariable(variableName);
+    if (GlobalVar) {
       GlobalVar->eraseFromParent();
+    }
   }
-}
-
-// Types must be specified in this version since the global variable may not exist and type can't be inferred
-void replaceGlobalVariablesWithArgs(llvm::Module* Module, std::vector<std::string> variableNames, std::vector<llvm::Type*> types) {
-    assert(variableNames.size() == types.size());
-
-    llvm::SmallVector<llvm::Function*, 8> functionsToUpdate = {};
-    for (auto& function : Module->functions()) {
-        if (!pocl::isKernelToProcess(function)) {
-            continue;
-        }
-        functionsToUpdate.push_back(&function);
-    }
-
-    auto num_updated_functions = int();
-
-    for (auto Function : functionsToUpdate) {
-        // Add additional argument for the work item dimensionality.
-        llvm::FunctionType* FunctionType = Function->getFunctionType();
-        std::vector<llvm::Type*> ArgumentTypes(FunctionType->param_begin(),
-            FunctionType->param_end());
-        for (llvm::Type* type : types) ArgumentTypes.push_back(type);
-
-        // Create new function.
-        llvm::FunctionType* NewFunctionType = llvm::FunctionType::get(
-            Function->getReturnType(), ArgumentTypes, false);
-        llvm::Function* NewFunction = llvm::Function::Create(
-            NewFunctionType, Function->getLinkage(), Function->getName(), Module);
-        NewFunction->takeName(Function);
-
-        // Map function arguments.
-        llvm::ValueToValueMapTy VV;
-        llvm::Function::arg_iterator OldArg;
-        llvm::Function::arg_iterator NewArg;
-        for (OldArg = Function->arg_begin(), NewArg = NewFunction->arg_begin();
-            OldArg != Function->arg_end(); NewArg++, OldArg++) {
-            NewArg->takeName(&*OldArg);
-            VV[&*OldArg] = &*NewArg;
-        }
-
-        // Clone function.
-        llvm::SmallVector<llvm::ReturnInst*, 1> RI;
-        CloneFunctionIntoAbs(NewFunction, Function, VV, RI);
-
-        // Replace uses of the global offset variables with the new arguments.
-        for (std::string variableName : variableNames) {
-            NewArg->setName(variableName);
-            replaceScalarGlobalVarInFunction(Module, NewFunction, ("_" + variableName).c_str(), (&*NewArg));
-            NewArg++;
-        }
-        num_updated_functions++;
-    }
-
-    for (auto F : functionsToUpdate) {
-        F->eraseFromParent();
-    }
-
-    for (std::string variableName : variableNames) {
-        auto GlobalVar = Module->getGlobalVariable(variableName);
-        if (GlobalVar) {
-            GlobalVar->eraseFromParent();
-        }
-    }
 }
 
 void handleGetWorkDim(llvm::Module* Module){
- //   auto type = llvm::Type::getInt32Ty(Module->getContext());
-	//replaceGlobalVariableWithArg(Module, "global_offset_x", type);
+    auto type = llvm::Type::getInt32Ty(Module->getContext());
+    replaceGlobalVariablesWithArgs(Module, { "work_dim" }, { type });
 }
 
 void handleGetGlobalOffset(llvm::Module* Module){
     auto type = llvm::Type::getInt32Ty(Module->getContext());
 	replaceGlobalVariablesWithArgs(Module, 
-        std::vector<std::string>{ "work_dim", "global_offset_x", "global_offset_y", "global_offset_z" },
-        std::vector<llvm::Type*>(4, type));
+        { "global_offset_x", "global_offset_y", "global_offset_z" },
+        std::vector<llvm::Type*>(3, type));
 }
 
 int findLibDevice(char LibDevicePath[PATH_MAX], const char *Arch) {
