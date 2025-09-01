@@ -217,6 +217,7 @@ if(ENABLE_SIGFPE_HANDLER OR ENABLE_SIGUSR2_HANDLER)
 endif()
 
 add_library("pocl-devices" OBJECT ${POCL_DEVICES_SOURCES})
+target_link_libraries("pocl-devices" PRIVATE libpocl_unlinked_objs)
 if(OCL_ICD_INCLUDE_DIRS)
   target_include_directories("pocl-devices" SYSTEM PUBLIC ${OCL_ICD_INCLUDE_DIRS})
 endif()

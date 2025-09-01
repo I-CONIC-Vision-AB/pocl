@@ -94,7 +94,7 @@ bool removeClangGeneratedKernelStubs(llvm::Module *Program);
 bool removeMetadataFromClangStubs(llvm::Module *Program);
 
 // Remove a function from a module, along with all callsites.
-POCL_EXPORT
+__declspec(dllimport)
 void eraseFunctionAndCallers(llvm::Function *Function);
 
 bool isAutomaticLocal(llvm::Function *F, llvm::GlobalVariable &Var);
@@ -112,7 +112,7 @@ bool isWorkitemFunctionWithOnlyCompilerExpandableCalls(const llvm::Function &F);
 /// directly analyzed and expanded by the kernel compiler.
 bool isCompilerExpandableWIFunctionCall(const llvm::CallInst &Call);
 
-POCL_EXPORT
+__declspec(dllimport)
 bool isGVarUsedByFunction(llvm::GlobalVariable *GVar, llvm::Function *F);
 
 // Checks if the given argument of Func is a local buffer.
@@ -142,7 +142,7 @@ size_t calculateGVarOffsetsSizes(
     std::map<llvm::GlobalVariable *, uint64_t> &GVarOffsets,
     std::set<llvm::GlobalVariable *> &GVarSet);
 
-POCL_EXPORT
+__declspec(dllimport)
 bool isKernelToProcess(const llvm::Function &F);
 
 llvm::Metadata *createConstantIntMD(llvm::LLVMContext &C, int32_t Val);

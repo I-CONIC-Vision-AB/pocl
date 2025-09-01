@@ -44,7 +44,7 @@
 
 #include <string.h>
 #include <fcntl.h>
-#include <unistd.h>
+//#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -114,11 +114,11 @@ typedef struct pocl_cuda_queue_data_s
 {
   CUstream stream;
   int use_threads;
-  pthread_t submit_thread;
-  pthread_t finalize_thread;
-  pthread_mutex_t lock;
-  pthread_cond_t pending_cond;
-  pthread_cond_t running_cond;
+  // pthread_t submit_thread;
+  // pthread_t finalize_thread;
+  // pthread_mutex_t lock;
+  // pthread_cond_t pending_cond;
+  // pthread_cond_t running_cond;
   _cl_command_node *volatile pending_queue;
   _cl_command_node *volatile running_queue;
   cl_command_queue queue;
@@ -150,7 +150,7 @@ typedef struct pocl_cuda_event_data_s
   CUevent end;
   volatile int events_ready;
   cl_int *ext_event_flag;
-  pthread_cond_t event_cond;
+  //pthread_cond_t event_cond;
   volatile unsigned num_ext_events;
 } pocl_cuda_event_data_t;
 
@@ -170,7 +170,7 @@ typedef struct pocl_cuda_device_data_s
   cl_bool available;
 
   pocl_cuda_kernel_data_t cuda_builtin_kernels_data[CUDA_BUILTIN_KERNELS];
-  pocl_cuda_kernel_data_t cudnn_builtin_kernels_data[CUDNN_BUILTIN_KERNELS];
+  //pocl_cuda_kernel_data_t cudnn_builtin_kernels_data[CUDNN_BUILTIN_KERNELS];
   pocl_cuda_program_data_t cuda_builtin_kernels_program;
   pocl_cuda_program_data_t cudnn_builtin_kernels_program;
   int cuda_builtin_kernels_built;
@@ -179,8 +179,8 @@ typedef struct pocl_cuda_device_data_s
 
 extern uint64_t pocl_num_devices;
 
-void *pocl_cuda_submit_thread (void *);
-void *pocl_cuda_finalize_thread (void *);
+//void *pocl_cuda_submit_thread (void *);
+//void *pocl_cuda_finalize_thread (void *);
 
 static void
 pocl_cuda_abort_on_error (CUresult result, unsigned line, const char *func,
@@ -856,30 +856,29 @@ pocl_cuda_init_queue (cl_device_id device, cl_command_queue queue)
   if (CUDA_CHECK_ERROR (result, "cuStreamCreate"))
     return CL_OUT_OF_RESOURCES;
 
-  queue_data->use_threads
-      = !pocl_get_bool_option ("POCL_CUDA_DISABLE_QUEUE_THREADS", 1);
+  queue_data->use_threads = 0; //= !pocl_get_bool_option ("POCL_CUDA_DISABLE_QUEUE_THREADS", 1);
 
-  if (queue_data->use_threads)
-    {
-      PTHREAD_CHECK (pthread_mutex_init (&queue_data->lock, NULL));
-      PTHREAD_CHECK (pthread_cond_init (&queue_data->pending_cond, NULL));
-      PTHREAD_CHECK (pthread_cond_init (&queue_data->running_cond, NULL));
-      int err = pthread_create (&queue_data->submit_thread, NULL,
-                                pocl_cuda_submit_thread, queue_data);
-      if (err)
-        {
-          POCL_MSG_ERR ("[CUDA] Error creating submit thread: %d\n", err);
-          return CL_OUT_OF_RESOURCES;
-        }
+  // if (queue_data->use_threads)
+    // {
+      // PTHREAD_CHECK (pthread_mutex_init (&queue_data->lock, NULL));
+      // PTHREAD_CHECK (pthread_cond_init (&queue_data->pending_cond, NULL));
+      // PTHREAD_CHECK (pthread_cond_init (&queue_data->running_cond, NULL));
+      // int err = pthread_create (&queue_data->submit_thread, NULL,
+                                // pocl_cuda_submit_thread, queue_data);
+      // if (err)
+        // {
+          // POCL_MSG_ERR ("[CUDA] Error creating submit thread: %d\n", err);
+          // return CL_OUT_OF_RESOURCES;
+        // }
 
-      err = pthread_create (&queue_data->finalize_thread, NULL,
-                            pocl_cuda_finalize_thread, queue_data);
-      if (err)
-        {
-          POCL_MSG_ERR ("[CUDA] Error creating finalize thread: %d\n", err);
-          return CL_OUT_OF_RESOURCES;
-        }
-    }
+      // err = pthread_create (&queue_data->finalize_thread, NULL,
+                            // pocl_cuda_finalize_thread, queue_data);
+      // if (err)
+        // {
+          // POCL_MSG_ERR ("[CUDA] Error creating finalize thread: %d\n", err);
+          // return CL_OUT_OF_RESOURCES;
+        // }
+    // }
 
   return CL_SUCCESS;
 }
@@ -896,16 +895,16 @@ pocl_cuda_free_queue (cl_device_id device, cl_command_queue queue)
   assert (queue_data->running_queue == NULL);
 
   /* Kill queue threads */
-  if (queue_data->use_threads)
-    {
-      PTHREAD_CHECK (pthread_mutex_lock (&queue_data->lock));
-      queue_data->queue = NULL;
-      PTHREAD_CHECK (pthread_cond_signal (&queue_data->pending_cond));
-      PTHREAD_CHECK (pthread_cond_signal (&queue_data->running_cond));
-      PTHREAD_CHECK (pthread_mutex_unlock (&queue_data->lock));
-      PTHREAD_CHECK (pthread_join (queue_data->submit_thread, NULL));
-      PTHREAD_CHECK (pthread_join (queue_data->finalize_thread, NULL));
-    }
+  // if (queue_data->use_threads)
+    // {
+      // PTHREAD_CHECK (pthread_mutex_lock (&queue_data->lock));
+      // queue_data->queue = NULL;
+      // PTHREAD_CHECK (pthread_cond_signal (&queue_data->pending_cond));
+      // PTHREAD_CHECK (pthread_cond_signal (&queue_data->running_cond));
+      // PTHREAD_CHECK (pthread_mutex_unlock (&queue_data->lock));
+      // PTHREAD_CHECK (pthread_join (queue_data->submit_thread, NULL));
+      // PTHREAD_CHECK (pthread_join (queue_data->finalize_thread, NULL));
+    // }
 
   POCL_MEM_FREE(queue->data);
 
@@ -1164,7 +1163,7 @@ pocl_cuda_submit_read (CUstream stream, void *host_ptr, const void *device_ptr,
 {
   POCL_MSG_PRINT_CUDA ("cuMemcpyDtoHAsync %p -> %p / %zu B \n", device_ptr, host_ptr, cb);
   CUresult result = cuMemcpyDtoHAsync (
-      host_ptr, (CUdeviceptr) (device_ptr + offset), cb, stream);
+      host_ptr, (CUdeviceptr) ((size_t)device_ptr + offset), cb, stream);
   CUDA_CHECK_ABORT (result, "cuMemcpyDtoHAsync");
 }
 
@@ -1208,7 +1207,7 @@ pocl_cuda_submit_write (CUstream stream, const void *host_ptr,
                         void *device_ptr, size_t offset, size_t cb)
 {
   POCL_MSG_PRINT_CUDA ("cuMemcpyHtoDAsync %p -> %p / %zu B \n", host_ptr, device_ptr, cb);
-  CUresult result = cuMemcpyHtoDAsync ((CUdeviceptr) (device_ptr + offset),
+  CUresult result = cuMemcpyHtoDAsync ((CUdeviceptr) ((size_t)device_ptr + offset),
                                        host_ptr, cb, stream);
   CUDA_CHECK_ABORT (result, "cuMemcpyHtoDAsync");
 }
@@ -1218,8 +1217,8 @@ pocl_cuda_submit_copy (CUstream stream, void*__restrict__ src_mem_ptr,
                        size_t src_offset,  void *__restrict__ dst_mem_ptr,
                        size_t dst_offset, size_t cb)
 {
-  void *src_ptr = src_mem_ptr + src_offset;
-  void *dst_ptr = dst_mem_ptr + dst_offset;
+  void *src_ptr = (size_t)src_mem_ptr + src_offset;
+  void *dst_ptr = (size_t)dst_mem_ptr + dst_offset;
 
   if (src_ptr == dst_ptr)
     return;
@@ -1238,8 +1237,8 @@ pocl_cuda_submit_copy_p2p (CUstream stream, cl_device_id src_device,
                            void *__restrict__ dst_mem_ptr, size_t dst_offset,
                            size_t cb)
 {
-  void *src_ptr = src_mem_ptr + src_offset;
-  void *dst_ptr = dst_mem_ptr + dst_offset;
+  void *src_ptr = (size_t)src_mem_ptr + src_offset;
+  void *dst_ptr = (size_t)dst_mem_ptr + dst_offset;
 
   CUresult result;
   POCL_MSG_PRINT_CUDA ("cuMemcpyPeerAsync %p -> %p / %zu B \n", src_ptr,
@@ -1388,7 +1387,7 @@ pocl_cuda_submit_map_mem (CUstream stream, cl_mem mem,
   void *buf_ptr = p->mem_ptr;
 
   CUresult result = cuMemcpyDtoHAsync (
-      host_ptr, (CUdeviceptr) (buf_ptr + offset), size, stream);
+      host_ptr, (CUdeviceptr) ((size_t)buf_ptr + offset), size, stream);
   CUDA_CHECK_ABORT (result, "cuMemcpyDtoHAsync");
 }
 
@@ -1404,7 +1403,7 @@ pocl_cuda_submit_unmap_mem (CUstream stream, pocl_mem_identifier *dst_mem_id,
   if (host_ptr)
     {
       CUresult result = cuMemcpyHtoDAsync (
-          (CUdeviceptr) (dst_mem_id->mem_ptr + offset), host_ptr, size, stream);
+          (CUdeviceptr) ((size_t)dst_mem_id->mem_ptr + offset), host_ptr, size, stream);
       CUDA_CHECK_ABORT (result, "cuMemcpyHtoDAsync");
     }
   return NULL;
@@ -2436,14 +2435,14 @@ pocl_cuda_submit (_cl_command_node *node, cl_command_queue cq)
   if (((pocl_cuda_queue_data_t *)cq->data)->use_threads)
     {
 
-      PTHREAD_CHECK (pthread_cond_init (&p->event_cond, NULL));
-      /* Add command to work queue */
-      POCL_UNLOCK_OBJ (node->sync.event.event);
-      pocl_cuda_queue_data_t *queue_data = (pocl_cuda_queue_data_t *)cq->data;
-      PTHREAD_CHECK (pthread_mutex_lock (&queue_data->lock));
-      DL_APPEND (queue_data->pending_queue, node);
-      PTHREAD_CHECK (pthread_cond_signal (&queue_data->pending_cond));
-      PTHREAD_CHECK (pthread_mutex_unlock (&queue_data->lock));
+      // PTHREAD_CHECK (pthread_cond_init (&p->event_cond, NULL));
+      // /* Add command to work queue */
+      // POCL_UNLOCK_OBJ (node->sync.event.event);
+      // pocl_cuda_queue_data_t *queue_data = (pocl_cuda_queue_data_t *)cq->data;
+      // PTHREAD_CHECK (pthread_mutex_lock (&queue_data->lock));
+      // DL_APPEND (queue_data->pending_queue, node);
+      // PTHREAD_CHECK (pthread_cond_signal (&queue_data->pending_cond));
+      // PTHREAD_CHECK (pthread_mutex_unlock (&queue_data->lock));
     }
   else
     {
@@ -2594,8 +2593,8 @@ pocl_cuda_notify_event_finished (cl_event event)
 {
   pocl_cuda_event_data_t *e_d = (pocl_cuda_event_data_t *)event->data;
 
-  if (((pocl_cuda_queue_data_t *)event->queue->data)->use_threads)
-    PTHREAD_CHECK (pthread_cond_broadcast (&e_d->event_cond));
+  // if (((pocl_cuda_queue_data_t *)event->queue->data)->use_threads)
+    // PTHREAD_CHECK (pthread_cond_broadcast (&e_d->event_cond));
 }
 
 void
@@ -2605,14 +2604,14 @@ pocl_cuda_wait_event (cl_device_id device, cl_event event)
 
   if (((pocl_cuda_queue_data_t *)event->queue->data)->use_threads)
     {
-      /* Wait until background thread marks command as complete */
-      POCL_LOCK_OBJ (event);
-      while (event->status > CL_COMPLETE)
-        {
-          PTHREAD_CHECK (
-              pthread_cond_wait (&e_d->event_cond, &event->pocl_lock));
-        }
-      POCL_UNLOCK_OBJ (event);
+      // /* Wait until background thread marks command as complete */
+      // POCL_LOCK_OBJ (event);
+      // while (event->status > CL_COMPLETE)
+        // {
+          // PTHREAD_CHECK (
+              // pthread_cond_wait (&e_d->event_cond, &event->pocl_lock));
+        // }
+      // POCL_UNLOCK_OBJ (event);
     }
   else
     {
@@ -2628,7 +2627,7 @@ pocl_cuda_free_event_data (cl_event event)
     {
       pocl_cuda_event_data_t *event_data
           = (pocl_cuda_event_data_t *)event->data;
-      PTHREAD_CHECK (pthread_cond_destroy (&event_data->event_cond));
+      //PTHREAD_CHECK (pthread_cond_destroy (&event_data->event_cond));
       if (event->queue->properties & CL_QUEUE_PROFILING_ENABLE)
         cuEventDestroy (event_data->start);
       cuEventDestroy (event_data->end);
@@ -2660,99 +2659,99 @@ pocl_cuda_join (cl_device_id device, cl_command_queue cq)
   POname (clReleaseEvent) (event);
 }
 
-void *
-pocl_cuda_submit_thread (void *data)
-{
-  pocl_cuda_queue_data_t *queue_data = (pocl_cuda_queue_data_t *)data;
+// void *
+// pocl_cuda_submit_thread (void *data)
+// {
+  // pocl_cuda_queue_data_t *queue_data = (pocl_cuda_queue_data_t *)data;
 
-  cl_command_queue queue = queue_data->queue;
-  if (queue)
-    cuCtxSetCurrent (
-        ((pocl_cuda_device_data_t *)queue->device->data)->context);
-  else
-    /* This queue has already been released */
-    return NULL;
+  // cl_command_queue queue = queue_data->queue;
+  // if (queue)
+    // cuCtxSetCurrent (
+        // ((pocl_cuda_device_data_t *)queue->device->data)->context);
+  // else
+    // /* This queue has already been released */
+    // return NULL;
 
-  while (1)
-    {
-      /* Attempt to get next command from work queue */
-      _cl_command_node *node = NULL;
-      PTHREAD_CHECK (pthread_mutex_lock (&queue_data->lock));
-      if (!queue_data->queue)
-        {
-          PTHREAD_CHECK (pthread_mutex_unlock (&queue_data->lock));
-          break;
-        }
-      if (!queue_data->pending_queue)
-        {
-          PTHREAD_CHECK (pthread_cond_wait (&queue_data->pending_cond,
-                                            &queue_data->lock));
-        }
-      if (queue_data->pending_queue)
-        {
-          node = queue_data->pending_queue;
-          DL_DELETE (queue_data->pending_queue, node);
-        }
-      PTHREAD_CHECK (pthread_mutex_unlock (&queue_data->lock));
+  // while (1)
+    // {
+      // /* Attempt to get next command from work queue */
+      // _cl_command_node *node = NULL;
+      // PTHREAD_CHECK (pthread_mutex_lock (&queue_data->lock));
+      // if (!queue_data->queue)
+        // {
+          // PTHREAD_CHECK (pthread_mutex_unlock (&queue_data->lock));
+          // break;
+        // }
+      // if (!queue_data->pending_queue)
+        // {
+          // PTHREAD_CHECK (pthread_cond_wait (&queue_data->pending_cond,
+                                            // &queue_data->lock));
+        // }
+      // if (queue_data->pending_queue)
+        // {
+          // node = queue_data->pending_queue;
+          // DL_DELETE (queue_data->pending_queue, node);
+        // }
+      // PTHREAD_CHECK (pthread_mutex_unlock (&queue_data->lock));
 
-      /* Submit command, if we found one */
-      if (node)
-        {
-          pocl_cuda_submit_node (node, queue_data->queue, 0);
+      // /* Submit command, if we found one */
+      // if (node)
+        // {
+          // pocl_cuda_submit_node (node, queue_data->queue, 0);
 
-          /* Add command to running queue */
-          PTHREAD_CHECK (pthread_mutex_lock (&queue_data->lock));
-          DL_APPEND (queue_data->running_queue, node);
-          PTHREAD_CHECK (pthread_cond_signal (&queue_data->running_cond));
-          PTHREAD_CHECK (pthread_mutex_unlock (&queue_data->lock));
-        }
-    }
+          // /* Add command to running queue */
+          // PTHREAD_CHECK (pthread_mutex_lock (&queue_data->lock));
+          // DL_APPEND (queue_data->running_queue, node);
+          // PTHREAD_CHECK (pthread_cond_signal (&queue_data->running_cond));
+          // PTHREAD_CHECK (pthread_mutex_unlock (&queue_data->lock));
+        // }
+    // }
 
-  return NULL;
-}
+  // return NULL;
+// }
 
-void *
-pocl_cuda_finalize_thread (void *data)
-{
-  pocl_cuda_queue_data_t *queue_data = (pocl_cuda_queue_data_t *)data;
+// void *
+// pocl_cuda_finalize_thread (void *data)
+// {
+  // pocl_cuda_queue_data_t *queue_data = (pocl_cuda_queue_data_t *)data;
 
-  cl_command_queue queue = queue_data->queue;
-  if (queue)
-    cuCtxSetCurrent (
-        ((pocl_cuda_device_data_t *)queue->device->data)->context);
-  else
-    /* This queue has already been released */
-    return NULL;
+  // cl_command_queue queue = queue_data->queue;
+  // if (queue)
+    // cuCtxSetCurrent (
+        // ((pocl_cuda_device_data_t *)queue->device->data)->context);
+  // else
+    // /* This queue has already been released */
+    // return NULL;
 
-  while (1)
-    {
-      /* Attempt to get next node from running queue */
-      _cl_command_node *node = NULL;
-      PTHREAD_CHECK (pthread_mutex_lock (&queue_data->lock));
-      if (!queue_data->queue)
-        {
-          PTHREAD_CHECK (pthread_mutex_unlock (&queue_data->lock));
-          break;
-        }
-      if (!queue_data->running_queue)
-        {
-          PTHREAD_CHECK (pthread_cond_wait (&queue_data->running_cond,
-                                            &queue_data->lock));
-        }
-      if (queue_data->running_queue)
-        {
-          node = queue_data->running_queue;
-          DL_DELETE (queue_data->running_queue, node);
-        }
-      PTHREAD_CHECK (pthread_mutex_unlock (&queue_data->lock));
+  // while (1)
+    // {
+      // /* Attempt to get next node from running queue */
+      // _cl_command_node *node = NULL;
+      // PTHREAD_CHECK (pthread_mutex_lock (&queue_data->lock));
+      // if (!queue_data->queue)
+        // {
+          // PTHREAD_CHECK (pthread_mutex_unlock (&queue_data->lock));
+          // break;
+        // }
+      // if (!queue_data->running_queue)
+        // {
+          // PTHREAD_CHECK (pthread_cond_wait (&queue_data->running_cond,
+                                            // &queue_data->lock));
+        // }
+      // if (queue_data->running_queue)
+        // {
+          // node = queue_data->running_queue;
+          // DL_DELETE (queue_data->running_queue, node);
+        // }
+      // PTHREAD_CHECK (pthread_mutex_unlock (&queue_data->lock));
 
-      /* Wait for command to finish, if we found one */
-      if (node)
-        pocl_cuda_finalize_command (queue->device, node->sync.event.event);
-    }
+      // /* Wait for command to finish, if we found one */
+      // if (node)
+        // pocl_cuda_finalize_command (queue->device, node->sync.event.event);
+    // }
 
-  return NULL;
-}
+  // return NULL;
+// }
 
 char* pocl_cuda_init_build(void *data)
 {

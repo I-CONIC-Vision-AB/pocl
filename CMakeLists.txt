@@ -64,6 +64,10 @@ if(MSVC)
   #       leg-shooters enabled.
 endif()
 
+if(MSVC)
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17")
+endif(MSVC)
+
 set(CMAKE_C_STANDARD "${SUPPORTED_C_STD_VERSION}")
 
 # if variable FEATURE_X isn't defined, sets it to DEFAULT_FEATURE_X;

@@ -240,7 +240,6 @@ endif()
 
 set(LIBPOCL_OBJS "$<TARGET_OBJECTS:libpocl_unlinked_objs>"
                  "$<TARGET_OBJECTS:pocl_cache>")
-
 if(ENABLE_HOST_CPU_DEVICES)
   # always link into libpocl if any CPU device is enabled
   list(APPEND LIBPOCL_OBJS "$<TARGET_OBJECTS:pocl-devices-topology>")
@@ -402,7 +401,7 @@ set_target_properties("${POCL_LIBRARY_NAME}" PROPERTIES SOVERSION "${LIB_API_VER
   VERSION "${LIB_BUILD_VERSION}"
   LINK_FLAGS "${LLVM_LDFLAGS}  ${ICD_LD_FLAGS}")
 
-target_link_libraries("${POCL_LIBRARY_NAME}" PRIVATE ${POCL_PRIVATE_LINK_LIBRARIES})
+target_link_libraries("${POCL_LIBRARY_NAME}" PRIVATE ${POCL_PRIVATE_LINK_LIBRARIES} version.lib)
 target_link_directories("${POCL_LIBRARY_NAME}" PRIVATE ${POCL_PRIVATE_LINK_DIRECTORIES})
 install(TARGETS "${POCL_LIBRARY_NAME}"
         ARCHIVE DESTINATION ${POCL_INSTALL_STATIC_LIBDIR_REL}
