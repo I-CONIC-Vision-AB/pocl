@@ -1616,11 +1616,6 @@ pocl_cuda_build_ptx (void *llvm_ir, cl_program prog, char *out_ptx, CUmodule *ou
     }
 #endif
 
-  /* Get handle to constant memory buffer */
-  // this call might fail actually
-  cuModuleGetGlobal (constant_mem_base, constant_mem_size, *out_module,
-                     "_constant_memory_region_");
-
   return CL_SUCCESS;
 }
 
@@ -2143,16 +2138,13 @@ pocl_cuda_submit_kernel (CUstream stream, _cl_command_node *cmd,
   /* Add global work dimensionality */
   params[arg_index++] = &pc.work_dim;
 
-  /* Add global offsets if necessary */
-  if (has_offsets)
-    {
-      globalOffsets[0] = pc.global_offset[0];
-      globalOffsets[1] = pc.global_offset[1];
-      globalOffsets[2] = pc.global_offset[2];
-      params[arg_index++] = globalOffsets + 0;
-      params[arg_index++] = globalOffsets + 1;
-      params[arg_index++] = globalOffsets + 2;
-    }
+  /* Add global offsets */
+  globalOffsets[0] = pc.global_offset[0];
+  globalOffsets[1] = pc.global_offset[1];
+  globalOffsets[2] = pc.global_offset[2];
+  params[arg_index++] = globalOffsets + 0;
+  params[arg_index++] = globalOffsets + 1;
+  params[arg_index++] = globalOffsets + 2;
 
   /* Launch kernel */
   result = cuLaunchKernel (function, pc.num_groups[0], pc.num_groups[1],
